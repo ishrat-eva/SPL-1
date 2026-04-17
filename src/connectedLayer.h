@@ -6,92 +6,81 @@
 #include <vector>
 using namespace std;
 
-class FullyConnectedLayer   {
+class FullyConnectedLayer {
 public:
-    int inputSize;
-    int outputSize;
-    
-    Matrix weights;
-    Matrix biases;
-    
-    Matrix lastInput;
-    Matrix lastOutput;
-    
-    FullyConnectedLayer(int in, int out) 
-        : inputSize(in), 
-          outputSize(out),
-          weights(out, in),
-          biases(out, 1),
-          lastInput(1, 1),
-          lastOutput(1, 1)
-    {
+    int inputSize, outputSize;
+    Matrix weights, biases;
+    Matrix lastInput, lastPreActivation;
+    bool usedRelu; 
 
-        weights.randomize(-0.5, 0.5);
+    FullyConnectedLayer(int in, int out)
+        : inputSize(in), outputSize(out),
+          weights(out, in), biases(out, 1),
+          lastInput(1,1), lastPreActivation(1,1),
+          usedRelu(false)
+    {
+        double scale = sqrt(2.0 / in);
+        for(int i = 0; i < out; i++)
+            for(int j = 0; j < in; j++)
+                weights.data[i][j] = ((double)rand()/RAND_MAX * 2 - 1) * scale;
         biases.fill(0.0);
     }
 
-
-  vector<double> forward(vector<double> input) {
-        // Convert input to matrix
+    vector<double> forward(vector<double> input) {
+        usedRelu = true;
         lastInput = Matrix(input.size(), 1);
-        for(int i = 0; i < input.size(); i++) {
-            lastInput.at(i, 0) = input[i];
-        }
-    
- 
-        
-        
-        lastOutput = weights.multiply(lastInput);
-        for(int i = 0; i < outputSize; i++) {
-            lastOutput.at(i, 0) += biases.at(i, 0);
-        }
-        
-        
-        lastOutput = reluMatrix(lastOutput);
-        
-        vector<double> output(outputSize);
-        for(int i = 0; i < outputSize; i++) {
-            output[i] = lastOutput.at(i, 0);
-        }
-        return output;
+        for(int i = 0; i < (int)input.size(); i++)
+            lastInput.data[i][0] = input[i];
+
+        Matrix z = weights.multiply(lastInput);
+        for(int i = 0; i < outputSize; i++)
+            z.data[i][0] += biases.data[i][0];
+        lastPreActivation = z;
+
+        Matrix a = reluMatrix(z);
+        vector<double> out(outputSize);
+        for(int i = 0; i < outputSize; i++)
+            out[i] = a.data[i][0];
+        return out;
     }
 
-    
     vector<double> forwardLinear(vector<double> input) {
+        usedRelu = false;
         lastInput = Matrix(input.size(), 1);
-        for(int i = 0; i < input.size(); i++) {
-            lastInput.at(i, 0) = input[i];
-        }
-        
-        lastOutput = weights.multiply(lastInput);
-        for(int i = 0; i < outputSize; i++) {
-            lastOutput.at(i, 0) += biases.at(i, 0);
-        }
-        
-        vector<double> output(outputSize);
-        for(int i = 0; i < outputSize; i++) {
-            output[i] = lastOutput.at(i, 0);
-        }
-        return output;
+        for(int i = 0; i < (int)input.size(); i++)
+            lastInput.data[i][0] = input[i];
+
+        Matrix z = weights.multiply(lastInput);
+        for(int i = 0; i < outputSize; i++)
+            z.data[i][0] += biases.data[i][0];
+        lastPreActivation = z;
+
+        vector<double> out(outputSize);
+        for(int i = 0; i < outputSize; i++)
+            out[i] = z.data[i][0];
+        return out;
     }
-    
-    
-    void updateWeights(std::vector<double> errors, double learningRate)   {
-      
-        Matrix errorMatrix(errors.size(), 1);
-        for(int i = 0; i < errors.size(); i++) {
-            errorMatrix.at(i, 0) = errors[i];
+    vector<double> updateWeights(vector<double> errors, double learningRate) {
+        vector<double> delta(outputSize);
+        for(int i = 0; i < outputSize; i++) {
+            if(usedRelu)
+                delta[i] = errors[i] * reluDerivative(lastPreActivation.data[i][0]);
+            else
+                delta[i] = errors[i]; 
         }
-       
-        Matrix weightChanges = errorMatrix.multiply(lastInput.transpose());
-        weightChanges = weightChanges.multiplyScalar(learningRate);
-        
-       
-        weights = weights.subtract(weightChanges);
-        
-        
-        Matrix biasChanges = errorMatrix.multiplyScalar(learningRate);
-        biases = biases.subtract(biasChanges);
+
+        vector<double> dInput(inputSize, 0.0);
+        for(int j = 0; j < inputSize; j++)
+            for(int i = 0; i < outputSize; i++)
+                dInput[j] += delta[i] * weights.data[i][j];
+
+        for(int i = 0; i < outputSize; i++) {
+            for(int j = 0; j < inputSize; j++)
+                weights.data[i][j] -= learningRate * delta[i] * lastInput.data[j][0];
+            biases.data[i][0] -= learningRate * delta[i];
+        }
+
+        return dInput;
     }
 };
 
